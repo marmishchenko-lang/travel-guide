@@ -1,0 +1,10 @@
+{
+  "name": "deepstate-zone-integration",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Автоматична класифікація зон безпеки (green/orange/red/full_ban) за даними DeepState для форми відряджень.",
+  "dependencies": {
+    "@netlify/blobs": "^7.0.0",
+    "@turf/turf": "^6.5.0"
+  }
+}

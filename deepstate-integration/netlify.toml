@@ -1,0 +1,7 @@
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# get-city-zones.js доступна за /.netlify/functions/get-city-zones
+# update-zone-cache.js — scheduled function, розклад заданий у самому
+# файлі через exports.config.schedule (кожні 6 годин).
