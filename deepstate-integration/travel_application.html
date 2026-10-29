@@ -112,6 +112,13 @@ table.etbl input[readonly]{background:var(--sur2);color:var(--muted)}
 table.etbl input:disabled,table.etbl select:disabled{background:var(--sur2);color:var(--brd2);border-style:dashed;cursor:not-allowed}
 table.etbl select{min-width:118px}
 table.etbl select.tr-type,table.etbl select.o-cat{min-width:200px}
+.period-pick{display:flex;align-items:center;gap:8px}
+.period-pick input{flex:1;min-width:0}
+.period-hint{font-size:11px;color:var(--ink3,#6b7280);margin-top:4px;line-height:1.35}
+.meals-empty{padding:18px 16px;border:1px dashed var(--brd2,#cbd5e1);border-radius:10px;color:var(--ink3,#6b7280);font-size:13px;line-height:1.5;text-align:center}
+.meals-note{margin:0 0 10px;padding:9px 12px;border-radius:8px;background:var(--sur2,#f4f6f8);color:var(--a2,#b45309);font-size:12px;font-weight:600;line-height:1.4}
+table.etbl td.m-date-cell{white-space:nowrap;font-variant-numeric:tabular-nums}
+table.etbl td.m-date-cell small{color:var(--ink3,#6b7280);margin-left:4px}
 table.etbl.wrap-th th{white-space:normal;line-height:1.25;vertical-align:bottom;min-width:70px}
 table.etbl input[type=time]{min-width:96px}
 table.etbl input[type=number]{min-width:88px}
@@ -578,7 +585,7 @@ body.lang-ua .ua.block{display:block}
 
 <div class="sync-notice">
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
-  <span><strong>Автозаповнення з Запиту на відрядження / Auto-filled from Travel Request:</strong> ПІБ, Період, Мета поїздки та Отримана передплата синхронізуються з TRA002. Редагуйте їх у вкладці «Запит на відрядження», щоб оновити тут.</span>
+  <span><strong>Автозаповнення з Запиту на відрядження / Auto-filled from Travel Request:</strong> ПІБ, Період (і рядки добових), Мета поїздки та Отримана передплата синхронізуються з TRA002. Редагуйте їх у вкладці «Запит на відрядження», щоб оновити тут.</span>
 </div>
 
 <!-- TOOLBAR -->
@@ -611,7 +618,15 @@ body.lang-ua .ua.block{display:block}
       <div class="fld fcol"><label>Мета відрядження / Purpose of travel</label><input type="text" id="g-purpose" class="synced-field"></div>
       <div class="fld"><label>Країна(и) / Country(ies)</label><input type="text" id="g-country" value="Україна / Ukraine"></div>
       <div class="fld"><label>Місто(а) / City(ies)</label><input type="text" id="g-city" class="synced-field"></div>
-      <div class="fld"><label>Період відрядження / Travel period <small style="color:var(--green-hdr-dk);font-weight:600">↔</small></label><input type="text" id="g-period" class="synced-field" placeholder="01.06.2025 – 05.06.2025"></div>
+      <div class="fld"><label>Період відрядження / Travel period <small style="color:var(--green-hdr-dk);font-weight:600">↔</small></label>
+        <div class="period-pick">
+          <input type="date" id="g-date-from" aria-label="Перший день / First day" onchange="onTripDatesChg('from')">
+          <span aria-hidden="true">–</span>
+          <input type="date" id="g-date-to" aria-label="Останній день / Last day" onchange="onTripDatesChg('to')">
+        </div>
+        <input type="hidden" id="g-period">
+        <div class="period-hint" id="g-period-hint">Перший і останній день поїздки — за ними створюються рядки добових. / First and last day of the trip — meal rows are created from them.</div>
+      </div>
     </div>
   </div>
 </div>
@@ -620,7 +635,9 @@ body.lang-ua .ua.block{display:block}
 <div class="sec">
   <div class="sec-hdr"><span class="sec-num">02</span><span class="sec-ttl">Харчування або виплата / Meals or Payout</span></div>
   <div class="sec-body">
-    <div class="tbl-wrap">
+    <div class="meals-empty" id="meals-empty">Спершу вкажіть період відрядження в розділі 01 — тут автоматично з’явиться рядок для кожного дня поїздки.<br>Enter the travel period in section 01 first — a row for each day of the trip will appear here.</div>
+    <div class="meals-note" id="meals-note" hidden></div>
+    <div class="tbl-wrap" id="meals-wrap">
       <table class="etbl wrap-th">
         <thead><tr>
           <th style="width:26px">№</th><th>Дата / Date</th><th>День / Day type</th><th>Місце / Location</th>
@@ -935,7 +952,7 @@ function regenerateTravelersSummary() {
   const reqType = document.getElementById('req-type');
   if (reqType) reqType.value = (travelersList[0] && travelersList[0].role) || 'consultant';
 
-  syncTravelerExpenseRows();
+  if (typeof syncTravelerExpenseRows === 'function') syncTravelerExpenseRows();
   syncToReport();
 }
 
@@ -970,6 +987,7 @@ function syncToReport() {
   if (gCity && place) gCity.value = place;
   if (gPurpose && activity) gPurpose.value = activity;
   if (gPeriod && dates) gPeriod.value = dates;
+  if (dates && typeof tra003SetPeriodFromText === 'function') tra003SetPeriodFromText(dates);
   if (prepayment) { if (advance) prepayment.value = advance; recalc(); }
 
   syncToTRA004();
@@ -2166,29 +2184,109 @@ function setNote(cell, text){
   cell.innerHTML = text ? `<span class="calc-hint">${text}</span>` : '—';
 }
 
-// ── 02 MEALS / PER DIEM (9 rows = Form!12:20) ──
-function buildMealsTable(){
+// ── 02 MEALS / PER DIEM — one row per day of the trip (max 9 = Form!12:20) ──
+const UA_WD = ['нд','пн','вт','ср','чт','пт','сб'];
+function isoToUTC(iso){ const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])) : null; }
+function utcToIso(d){ return d.toISOString().slice(0, 10); }
+function isoToUA(iso){ const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); return m ? `${m[3]}.${m[2]}.${m[1]}` : ''; }
+// Every calendar day from the first to the last day of the trip (inclusive)
+function tra003TripDays(){
+  const f = isoToUTC(document.getElementById('g-date-from')?.value);
+  const t = isoToUTC(document.getElementById('g-date-to')?.value);
+  if (!f || !t || t < f) return [];
+  const out = [];
+  for (let d = new Date(f); d <= t && out.length < 400; d.setUTCDate(d.getUTCDate() + 1)) out.push(utcToIso(d));
+  return out;
+}
+// Reads "22.06.2026 – 27.06.2026", "22/06/2026-27/06/2026", "2026-06-22 – 2026-06-27", or one date
+function parsePeriodText(text){
+  const found = [];
+  const re = /(\d{4})-(\d{1,2})-(\d{1,2})|(\d{1,2})[.\/](\d{1,2})[.\/](\d{2,4})/g;
+  let m;
+  while ((m = re.exec(text || '')) && found.length < 2) {
+    let y, mo, d;
+    if (m[1]) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+    else { d = +m[4]; mo = +m[5]; y = +m[6]; if (y < 100) y += 2000; }
+    const dt = new Date(Date.UTC(y, mo - 1, d));
+    if (dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d) found.push(utcToIso(dt));
+  }
+  return found;
+}
+function periodText(){
+  const f = document.getElementById('g-date-from')?.value, t = document.getElementById('g-date-to')?.value;
+  if (!f) return '';
+  return (!t || t === f) ? isoToUA(f) : `${isoToUA(f)} – ${isoToUA(t)}`;
+}
+// Called by syncToReport() with the "Exact dates of travel" text from the Travel Request
+function tra003SetPeriodFromText(text){
+  const [f, t] = parsePeriodText(text);
+  if (!f) return;                       // couldn't read it — leave the pickers for manual entry
+  const fromEl = document.getElementById('g-date-from'), toEl = document.getElementById('g-date-to');
+  const to = t || f;
+  if (fromEl.value === f && toEl.value === to) return;
+  fromEl.value = f; toEl.value = to;
+  onTripDatesChg();
+}
+function onTripDatesChg(which){
+  const fromEl = document.getElementById('g-date-from'), toEl = document.getElementById('g-date-to');
+  if (which === 'from' && fromEl.value && (!toEl.value || toEl.value < fromEl.value)) toEl.value = fromEl.value;
+  if (which === 'to' && toEl.value && fromEl.value && toEl.value < fromEl.value) fromEl.value = toEl.value;
+  toEl.min = fromEl.value || '';
+  document.getElementById('g-period').value = periodText();
+  buildMealsTable(rowVals('#meals-body tr', MEAL_FIELDS));
+  recalc();
+}
+function applyMealRow(tr, row){
+  MEAL_FIELDS.forEach(([key, cls]) => {
+    if (key === 'date') return;
+    const el = tr.querySelector(cls); if (!el || row[key] === undefined) return;
+    if (el.tagName === 'SELECT') setSelect(el, row[key]); else el.value = row[key];
+  });
+}
+// prevRows: values to keep (matched by date), so changing the period never wipes what was entered
+function buildMealsTable(prevRows){
   const tbody = document.getElementById('meals-body');
+  const empty = document.getElementById('meals-empty'), wrap = document.getElementById('meals-wrap'), note = document.getElementById('meals-note');
+  const allDays = tra003TripDays();
+  const days = allDays.slice(0, TRA003_ROWS.meals);
+  const byDate = {};
+  (prevRows || []).forEach(r => { if (r && r.date) byDate[r.date] = r; });
+
+  empty.hidden = days.length > 0; wrap.hidden = days.length === 0;
+  if (allDays.length > TRA003_ROWS.meals) {
+    note.hidden = false;
+    note.textContent = `Поїздка триває ${allDays.length} дн., а бланк звіту має ${TRA003_ROWS.meals} рядків добових. Показано перші ${TRA003_ROWS.meals} дн. (${isoToUA(days[0])} – ${isoToUA(days[days.length-1])}); уточніть у фінансового відділу, як звітувати за решту. / The trip is ${allDays.length} days but the report form has ${TRA003_ROWS.meals} per-diem rows — please check with Finance how to report the remaining days.`;
+  } else { note.hidden = true; note.textContent = ''; }
+
   const on = `onchange="calcMealRow(this.closest('tr'));recalc()"`;
   const oi = `oninput="calcMealRow(this.closest('tr'));recalc()"`;
-  let html = '';
-  for (let i = 1; i <= TRA003_ROWS.meals; i++) {
-    html += `<tr data-row="${i}">
+  tbody.innerHTML = days.map((iso, idx) => {
+    const i = idx + 1, wd = UA_WD[isoToUTC(iso).getUTCDay()];
+    return `<tr data-row="${i}">
       <td>${i}</td>
-      <td><input type="date" class="m-date" aria-label="Date, row ${i}"></td>
-      <td><select class="m-daytype" ${on} aria-label="Day type, row ${i}">${optHtml(DAY_TYPES,'Оберіть…')}</select></td>
-      <td><select class="m-loc" ${on} aria-label="Location, row ${i}">${optHtml(LOCATIONS)}</select></td>
-      <td><input type="time" class="m-dep" ${oi} aria-label="Departure time, row ${i}"></td>
-      <td><input type="time" class="m-ret" ${oi} aria-label="Return time, row ${i}"></td>
-      <td><select class="m-meals" ${on} aria-label="Meals provided, row ${i}">${optHtml(MEAL_OPTS)}</select></td>
+      <td class="m-date-cell"><input type="hidden" class="m-date" value="${iso}">${isoToUA(iso)}<small>${wd}</small></td>
+      <td><select class="m-daytype" ${on} aria-label="Day type, ${isoToUA(iso)}">${optHtml(DAY_TYPES,'— Не нараховувати / Not claimed —')}</select></td>
+      <td><select class="m-loc" ${on} aria-label="Location, ${isoToUA(iso)}">${optHtml(LOCATIONS)}</select></td>
+      <td><input type="time" class="m-dep" ${oi} aria-label="Departure time, ${isoToUA(iso)}"></td>
+      <td><input type="time" class="m-ret" ${oi} aria-label="Return time, ${isoToUA(iso)}"></td>
+      <td><select class="m-meals" ${on} aria-label="Meals provided, ${isoToUA(iso)}">${optHtml(MEAL_OPTS)}</select></td>
       <td class="m-pct num">—</td>
       <td class="m-chf num">—</td>
-      <td><input type="number" class="m-fx" min="0" step="0.0001" placeholder="грн/CHF" ${oi} aria-label="CHF/UAH rate, row ${i}"></td>
+      <td><input type="number" class="m-fx" min="0" step="0.0001" placeholder="грн/CHF" ${oi} aria-label="CHF/UAH rate, ${isoToUA(iso)}"></td>
       <td class="m-amt calc-out num">—</td>
     </tr>`;
-  }
-  tbody.innerHTML = html;
-  tbody.querySelectorAll('tr').forEach(tr => calcMealRow(tr));
+  }).join('');
+
+  const n = allDays.length;
+  tbody.querySelectorAll('tr').forEach((tr, idx) => {
+    const prev = byDate[days[idx]];
+    if (prev) applyMealRow(tr, prev);
+    else {                                   // new day: suggest the obvious day type
+      const dt = n === 1 ? '' : idx === 0 ? 'Departure day' : (idx === n - 1 ? 'Return day' : 'Full day');
+      if (dt) tr.querySelector('.m-daytype').value = dt;
+    }
+    calcMealRow(tr);
+  });
 }
 // Same logic as Form!H/I/J
 function calcMealRow(tr){
@@ -2379,7 +2477,9 @@ function collect(){
       purpose: document.getElementById('g-purpose')?.value || '',
       country: document.getElementById('g-country')?.value || '',
       city: document.getElementById('g-city')?.value || '',
-      period: document.getElementById('g-period')?.value || ''
+      period: document.getElementById('g-period')?.value || '',
+      dateFrom: document.getElementById('g-date-from')?.value || '',
+      dateTo: document.getElementById('g-date-to')?.value || ''
     },
     meals: rowVals('#meals-body tr', MEAL_FIELDS),
     trans: rowVals('#trans-body tr', TRANS_FIELDS),
@@ -2394,7 +2494,13 @@ function restore(d){
   const g = d.general || {};
   const set = (id, v) => { const el = document.getElementById(id); if (el && v !== undefined) el.value = v; };
   set('g-name', g.name); set('g-position', g.position); set('g-purpose', g.purpose);
-  set('g-country', g.country); set('g-city', g.city); set('g-period', g.period);
+  set('g-country', g.country); set('g-city', g.city);
+  // Trip dates: saved pickers → else parse the period text → else span of old meal-row dates
+  let from = g.dateFrom || '', to = g.dateTo || '';
+  if (!from) { const p = parsePeriodText(g.period); from = p[0] || ''; to = p[1] || p[0] || ''; }
+  if (!from) { const ds = (d.meals || []).map(r => r && r.date).filter(Boolean).sort(); from = ds[0] || ''; to = ds[ds.length - 1] || ''; }
+  set('g-date-from', from); set('g-date-to', to || from);
+  document.getElementById('g-period').value = periodText() || g.period || '';
   const legacyFx = g.abroadFx && g.abroadFx !== '1' ? g.abroadFx : '';   // old single FX field
 
   const applyRows = (sel, rows, fieldMap, calcFn) => {
@@ -2404,11 +2510,11 @@ function restore(d){
         const el = tr.querySelector(cls); if (!el || row[key] === undefined) return;
         if (el.tagName === 'SELECT') setSelect(el, row[key]); else el.value = row[key];
       });
-      if (sel === '#meals-body tr' && !row.fx && legacyFx && row.loc === 'Abroad') tr.querySelector('.m-fx').value = legacyFx;
       calcFn(tr);
     });
   };
-  applyRows('#meals-body tr', d.meals, MEAL_FIELDS, calcMealRow);
+  const mealRows = (d.meals || []).map(r => (r && !r.fx && legacyFx && r.loc === 'Abroad') ? Object.assign({}, r, { fx: legacyFx }) : r);
+  buildMealsTable(mealRows);
   applyRows('#trans-body tr', d.trans, TRANS_FIELDS, calcTransRow);
   applyRows('#other-body tr', d.other, OTHER_FIELDS, calcOtherRow);
 
@@ -2419,6 +2525,7 @@ function restore(d){
 }
 function autoSave(){ try{ localStorage.setItem('tra003', JSON.stringify(collect())); }catch(e){} }
 function clearForm(){
+  ['g-date-from','g-date-to','g-period'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   buildMealsTable(); buildTransTable(); buildOtherTable();
   document.getElementById('r-coeff').value = String(TRA003_RATES.coeff);
   document.getElementById('prepayment').value = '0';
